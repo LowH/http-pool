@@ -1,0 +1,47 @@
+HTTP Pool  -  Parallel HTTP requests
+
+Copyright 2011 Thomas de Grivel <billitch@gmail.com>
+
+Permission to use, copy, modify, and distribute this software for
+any purpose with or without fee is hereby granted, provided that
+the above copyright notice and this permission notice appear in
+all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL
+WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL
+THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR
+CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT,
+NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
+CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+******************************************************************
+
+USAGE
+
+(with-http-pool
+  ;; 1. Send requests only once :
+  (http-pool-request :get "http://www.google.com/?q=www.lowh.net&fmt=json"
+		     (lambda (json headers)
+		       ;; a continuation that will be called later
+		       ..))
+  (http-pool-request :get "http://www.google.com/?q=www.lowh.net&fmt=json"
+		     (lambda (json headers)
+		       ;; another continuation
+		       ..))
+  (http-pool-request :post "https://github.com/login/oauth/access_token"
+		     (lambda (json headers)
+		       ..)
+		     '(:client_id "billitch"
+		       :redirect_uri "http://www.example.com/oauth_redirect"
+		       :client_secret "42"
+		       :code "thisisnotreallymypassword"))
+  ;;    ...
+
+  ;; 2. Parse replies one by one, calling each continuation with the result :
+  (http-pool-parse (lambda (stream headers)
+		     (list (st-json:read-json stream)
+			   headers)))
+  ;; 3. Sockets get closed in unwind-protect
+  )
