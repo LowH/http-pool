@@ -17,7 +17,9 @@
 ;;  NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
 ;;  CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-(cl:defpackage :http-pool.system
+(in-package :cl-user)
+
+(defpackage :http-pool.system
   (:use :cl :asdf))
 
 (in-package :http-pool.system)
