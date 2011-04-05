@@ -19,7 +19,10 @@
 
 (defpackage :http-pool
   (:use :cl)
-  (:export #:with-http-pool
+  (:export #:make-query-string
+	   #:http-probe
+	   #:http-request
+	   #:with-http-pool
 	   #:http-pool-request
 	   #:http-pool-parse))
 
@@ -36,11 +39,20 @@
 	    plist))
    :latin-1))
 
-;;  HTTP Request
+;;  Simple HTTP requests
 
 (defun http-probe (url)
   (ignore-errors
     (= 200 (the fixnum (first (trivial-http:http-head url))))))
+
+(defun http-request (method url &optional post-params)
+  (apply #'resolve
+	 (ecase method
+	   ((:get) (trivial-http:http-get url))
+	   ((:post) (trivial-http:http-post
+		     url
+		     "application/x-www-form-urlencoded"
+		     (make-query-string post-params))))))
 
 ;;  HTTP response
 
@@ -49,12 +61,11 @@
    (chunga:make-chunked-stream stream)
    :external-format drakma::+latin-1+))
 
-(defun http-stream (socket &optional (method :get))
-  (multiple-value-bind (code headers stream)
-      (trivial-http:http-read-response socket)
-    (ecase code
-      ((200) (values (wrap-stream stream) headers))
-      ((302) (destructuring-bind (code+ headers+ stream+ actual-url)
+(defun resolve (method code headers stream)
+  "Returns values STREAM HEADERS"
+  (ecase code
+    ((200) (values (wrap-stream stream) headers))
+    ((302) (destructuring-bind (code+ headers+ stream+ actual-url)
 		 (trivial-http:http-resolve
 		  (cdr (assoc :location headers))
 		  :http-method (ecase method
@@ -62,7 +73,7 @@
 				 ((:post) 'trivial-http::http-post)))
 	       (declare (ignore actual-url))
 	       (assert (= 200 (the fixnum code+)))
-	       (values (wrap-stream stream+) headers+))))))
+	       (values (wrap-stream stream+) headers+)))))
 
 ;;  Pooled HTTP requests
 
@@ -83,7 +94,9 @@ Keys are of the form (METHOD URL) where method can be :GET or :POST.
 		*http-pool*))))
 
 (defun http-pool-request (method url continuation &optional post-params)
-  (declare (type function continuation))
+  "Register a continuation in the request pool"
+  (declare (type function continuation)
+	   (type (member :get :post) method))
   (let* ((key `(,method ,url ,post-params))
 	 (entry (gethash key *http-pool*)))
     (cond (entry
@@ -107,7 +120,7 @@ Keys are of the form (METHOD URL) where method can be :GET or :POST.
 
 (defun http-pool-parse-replies (parse-fn)
   "
-PARSE-FN takes a STREAM and returns RESULT.
+PARSE-FN takes STREAM and HEADERS and returns RESULT.
 Each pooled continuation is then applied to RESULT
 "
   (declare (type function parse-fn))
@@ -117,8 +130,11 @@ Each pooled continuation is then applied to RESULT
        (declare (ignore url))
        (assert (eq :request-sent (pool-entry-state e)))
        (setf (pool-entry-state e) :parsed)
-       (let ((result (funcall parse-fn
-			      (http-stream (pool-entry-socket e) method))))
+       (let ((result (multiple-value-call parse-fn
+		       (multiple-value-call #'resolve
+			 method
+			 (trivial-http:http-read-response
+			  (pool-entry-socket e))))))
 	 (mapcar (lambda (c)
 		   (declare (type function c))
 		   (apply c result))
