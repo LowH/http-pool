@@ -47,6 +47,7 @@
 
 (defun http-request (method url &optional post-params)
   (apply #'resolve
+	 method
 	 (ecase method
 	   ((:get) (trivial-http:http-get url))
 	   ((:post) (trivial-http:http-post
@@ -62,9 +63,9 @@
    :external-format drakma::+latin-1+))
 
 (defun resolve (method code headers stream)
-  "Returns values STREAM HEADERS"
+  "Returns list STREAM HEADERS"
   (ecase code
-    ((200) (values (wrap-stream stream) headers))
+    ((200) (list (wrap-stream stream) headers))
     ((302) (destructuring-bind (code+ headers+ stream+ actual-url)
 		 (trivial-http:http-resolve
 		  (cdr (assoc :location headers))
@@ -73,7 +74,7 @@
 				 ((:post) 'trivial-http::http-post)))
 	       (declare (ignore actual-url))
 	       (assert (= 200 (the fixnum code+)))
-	       (values (wrap-stream stream+) headers+)))))
+	       (list (wrap-stream stream+) headers+)))))
 
 ;;  Pooled HTTP requests
 
@@ -130,11 +131,11 @@ Each pooled continuation is then applied to RESULT
        (declare (ignore url))
        (assert (eq :request-sent (pool-entry-state e)))
        (setf (pool-entry-state e) :parsed)
-       (let ((result (multiple-value-call parse-fn
-		       (multiple-value-call #'resolve
-			 method
-			 (trivial-http:http-read-response
-			  (pool-entry-socket e))))))
+       (let ((result (apply parse-fn
+			    (apply #'resolve
+				   method
+				   (trivial-http:http-read-response
+				    (pool-entry-socket e))))))
 	 (mapcar (lambda (c)
 		   (declare (type function c))
 		   (apply c result))
