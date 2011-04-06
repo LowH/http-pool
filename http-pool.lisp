@@ -17,16 +17,21 @@
 ;;  NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
 ;;  CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
+(in-package :cl-user)
+
 (defpackage :http-pool
   (:use :cl)
-  (:export #:make-query-string
+  (:export #:*debug*
+	   #:make-query-string
 	   #:http-probe
 	   #:http-request
 	   #:with-http-pool
 	   #:http-pool-request
-	   #:http-pool-parse))
+	   #:http-pool-parse-replies))
 
 (in-package :http-pool)
+
+(defvar *debug* nil)
 
 ;;  URL
 
@@ -101,22 +106,28 @@ Keys are of the form (METHOD URL) where method can be :GET or :POST.
   (let* ((key `(,method ,url ,post-params))
 	 (entry (gethash key *http-pool*)))
     (cond (entry
+	   (when *debug*
+	     (format t "~&http-pool-request ADD ~S ~S~%"
+		     key continuation))
 	   (assert (eq :request-sent (pool-entry-state entry)))
 	   (push continuation (pool-entry-continuations entry))
 	   entry)
 	  (t
+	   (when *debug*
+	     (format t "~&http-pool-request CREATE ~S ~S~%"
+		     key continuation))
 	   (setf (gethash key *http-pool*)
 		 (make-pool-entry
 		  :state :request-sent
-		  :info (ecase method
-			  ((:get) (trivial-http:http-get
-				   url
-				   :request-only t))
-			  ((:post) (trivial-http:http-post
-				    url
-				    "application/x-www-form-urlencoded"
-				    (make-query-string post-params)
-				    :request-only t)))
+		  :socket (ecase method
+			    ((:get) (trivial-http:http-get
+				     url
+				     :request-only t))
+			    ((:post) (trivial-http:http-post
+				      url
+				      "application/x-www-form-urlencoded"
+				      (make-query-string post-params)
+				      :request-only t)))
 		  :continuations (list continuation)))))))
 
 (defun http-pool-parse-replies (parse-fn)
@@ -127,8 +138,8 @@ Each pooled continuation is then applied to RESULT
   (declare (type function parse-fn))
   (maphash
    (lambda (k e)
-     (destructuring-bind (method url) k
-       (declare (ignore url))
+     (destructuring-bind (method url post-params) k
+       (declare (ignorable url post-params))
        (assert (eq :request-sent (pool-entry-state e)))
        (setf (pool-entry-state e) :parsed)
        (let ((result (apply parse-fn
@@ -136,6 +147,9 @@ Each pooled continuation is then applied to RESULT
 				   method
 				   (trivial-http:http-read-response
 				    (pool-entry-socket e))))))
+	 (when *debug*
+	   (format t "~&http-pool-parse-replies ~S ~S -> ~S~%"
+		   k e result))
 	 (mapcar (lambda (c)
 		   (declare (type function c))
 		   (apply c result))
