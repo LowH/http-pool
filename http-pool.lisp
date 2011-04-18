@@ -62,24 +62,34 @@
 
 ;;  HTTP response
 
-(defun wrap-stream (stream)
+(defun wrap-stream (stream &optional (charset :latin-1))
   (flexi-streams:make-flexi-stream
    (chunga:make-chunked-stream stream)
-   :external-format drakma::+latin-1+))
+   :external-format (flexi-streams:make-external-format
+		     charset :eol-style :lf)))
 
 (defun resolve (method code headers stream)
   "Returns list STREAM HEADERS"
-  (ecase code
-    ((200) (list (wrap-stream stream) headers))
-    ((302) (destructuring-bind (code+ headers+ stream+ actual-url)
-		 (trivial-http:http-resolve
-		  (cdr (assoc :location headers))
-		  :http-method (ecase method
-				 ((:get) 'trivial-http::http-get)
-				 ((:post) 'trivial-http::http-post)))
-	       (declare (ignore actual-url))
-	       (assert (= 200 (the fixnum code+)))
-	       (list (wrap-stream stream+) headers+)))))
+  (let ((content-type (cdr (assoc :content-type headers))))
+    (cl-ppcre:register-groups-bind (nil nil charset?)
+	("([^\\s;]*)(;\\s*charset=([^\\s]+))?" content-type)
+      (let ((charset (or (find-symbol (string-upcase charset?)
+				      :keyword)
+			 :latin-1)))
+	(when *debug*
+	  (format t "~&~%resolve :charset? ~S :charset ~S~%"
+		  charset? charset))
+	(ecase code
+	  ((200) (list (wrap-stream stream charset) headers))
+	  ((302) (destructuring-bind (code+ headers+ stream+ actual-url)
+		     (trivial-http:http-resolve
+		      (cdr (assoc :location headers))
+		      :http-method (ecase method
+				     ((:get) 'trivial-http::http-get)
+				     ((:post) 'trivial-http::http-post)))
+		   (declare (ignore actual-url))
+		   (assert (= 200 (the fixnum code+)))
+		   (list (wrap-stream stream+ charset) headers+))))))))
 
 ;;  Pooled HTTP requests
 
