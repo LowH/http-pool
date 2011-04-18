@@ -42,7 +42,7 @@
 	      (let ((*print-case* :downcase))
 		(format nil "~A" p)))
 	    plist))
-   :latin-1))
+   :utf-8))
 
 ;;  Simple HTTP requests
 
