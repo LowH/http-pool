@@ -31,6 +31,7 @@
   :description "Parallel HTTP requests"
   :depends-on ("alexandria"
 	       "chunga"
+	       "cl-ppcre"
 	       "drakma"
 	       "flexi-streams"
 	       "trivial-http")
