@@ -22,6 +22,7 @@
 (defpackage :http-pool
   (:use :cl)
   (:export #:*debug*
+	   #:sanitize-uri
 	   #:make-query-string
 	   #:http-probe
 	   #:http-request
@@ -34,6 +35,23 @@
 (defvar *debug* nil)
 
 ;;  URL
+
+(defun sanitize-uri (uri)
+  (declare (type simple-string uri))
+  (with-output-to-string (out nil :element-type 'base-char)
+    (dotimes (i (length uri))
+      (let* ((c (char uri i))
+	     (code (char-code c)))
+	(cond ((<= code #x001f)
+	       nil)
+	      ((>= code #x0080)
+	       (map nil (lambda (b)
+			  (declare (type (unsigned-byte 8) b))
+			  (format out "%~2,'0x" b))
+		    (trivial-utf-8:string-to-utf-8-bytes
+		     (make-string 1 :initial-element c))))
+	      (t
+	       (write-char c out)))))))
 
 (defun make-query-string (plist)
   (drakma::alist-to-url-encoded-string
@@ -48,15 +66,16 @@
 
 (defun http-probe (url)
   (ignore-errors
-    (= 200 (the fixnum (first (trivial-http:http-head url))))))
+    (= 200 (the fixnum (first (trivial-http:http-head
+			       (sanitize-uri url)))))))
 
 (defun http-request (method url &optional post-params)
   (apply #'resolve
 	 method
 	 (ecase method
-	   ((:get) (trivial-http:http-get url))
+	   ((:get) (trivial-http:http-get (sanitize-uri url)))
 	   ((:post) (trivial-http:http-post
-		     url
+		     (sanitize-uri url)
 		     "application/x-www-form-urlencoded"
 		     (make-query-string post-params))))))
 
@@ -113,7 +132,8 @@ Keys are of the form (METHOD URL) where method can be :GET or :POST.
   "Register a continuation in the request pool"
   (declare (type function continuation)
 	   (type (member :get :post) method))
-  (let* ((key `(,method ,url ,post-params))
+  (let* ((url (sanitize-uri url))
+	 (key `(,method ,url ,post-params))
 	 (entry (gethash key *http-pool*)))
     (cond (entry
 	   (when *debug*

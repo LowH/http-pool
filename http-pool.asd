@@ -34,6 +34,7 @@
 	       "cl-ppcre"
 	       "drakma"
 	       "flexi-streams"
-	       "trivial-http")
+	       "trivial-http"
+	       "trivial-utf-8")
   :components
   ((:file "http-pool")))
