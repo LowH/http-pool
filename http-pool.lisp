@@ -28,11 +28,23 @@
 	   #:http-request
 	   #:with-http-pool
 	   #:http-pool-request
-	   #:http-pool-parse-replies))
+	   #:http-pool-parse-replies
+	   #:http-error))
 
 (in-package :http-pool)
 
 (defvar *debug* nil)
+
+;;  Error
+
+(define-condition http-error (error)
+  ((code :type integer :initform 500 :initarg :code)
+   (msg  :type string :initform "Server error" :initarg :msg)))
+
+(defun http-error (code format-control &rest format-args)
+  (error 'http-error
+	 :code code
+	 :msg (format nil "HTTP ~D ~?" code format-control format-args)))
 
 ;;  URL
 
@@ -94,21 +106,23 @@
 	("([^\\s;]*)(;\\s*charset=([^\\s]+))?" content-type)
       (let ((charset (or (find-symbol (string-upcase charset?)
 				      :keyword)
-			 :latin-1)))
+			 :latin-1))
+	    (location (cdr (assoc :location headers))))
 	(when *debug*
 	  (format t "~&~%resolve :charset? ~S :charset ~S~%"
 		  charset? charset))
-	(ecase code
+	(case code
 	  ((200) (list (wrap-stream stream charset) headers))
 	  ((302) (destructuring-bind (code+ headers+ stream+ actual-url)
 		     (trivial-http:http-resolve
-		      (cdr (assoc :location headers))
+		      location
 		      :http-method (ecase method
 				     ((:get) 'trivial-http::http-get)
 				     ((:post) 'trivial-http::http-post)))
 		   (declare (ignore actual-url))
 		   (assert (= 200 (the fixnum code+)))
-		   (list (wrap-stream stream+ charset) headers+))))))))
+		   (list (wrap-stream stream+ charset) headers+)))
+	  (:otherwise (http-error code "resolving ~S" location)))))))
 
 ;;  Pooled HTTP requests
 
