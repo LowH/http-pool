@@ -109,8 +109,8 @@
 			 :latin-1))
 	    (location (cdr (assoc :location headers))))
 	(when *debug*
-	  (format t "~&~%resolve :charset? ~S :charset ~S~%"
-		  charset? charset))
+	  (cl-log:log-message :debug "resolve :charset? ~S :charset ~S~%"
+			      charset? charset))
 	(case code
 	  ((200) (list (wrap-stream stream charset) headers))
 	  ((302) (destructuring-bind (code+ headers+ stream+ actual-url)
@@ -194,8 +194,9 @@ Each pooled continuation is then applied to RESULT
 	 (when *debug*
 	   (format t "~&http-pool-parse-replies ~S ~S -> ~S~%"
 		   k e result))
-	 (mapcar (lambda (c)
-		   (declare (type function c))
-		   (apply c result))
-		 (pool-entry-continuations e)))))
+	 (when result
+	   (mapcar (lambda (c)
+		     (declare (type function c))
+		     (apply c result))
+		   (pool-entry-continuations e))))))
    *http-pool*))
