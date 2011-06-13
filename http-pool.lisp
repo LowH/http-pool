@@ -99,30 +99,32 @@
    :external-format (flexi-streams:make-external-format
 		     charset :eol-style :lf)))
 
+(defun charset-from-headers (headers)
+  (or (let ((content-type (cdr (assoc :content-type headers))))
+	(cl-ppcre:register-groups-bind (nil nil charset?)
+	    ("([^\\s;]*)(;\\s*charset=([^\\s]+))?" content-type)
+	  (find-symbol (string-upcase charset?) :keyword)))
+      :latin-1))
+
 (defun resolve (method code headers stream)
   "Returns list STREAM HEADERS"
-  (let ((content-type (cdr (assoc :content-type headers))))
-    (cl-ppcre:register-groups-bind (nil nil charset?)
-	("([^\\s;]*)(;\\s*charset=([^\\s]+))?" content-type)
-      (let ((charset (or (find-symbol (string-upcase charset?)
-				      :keyword)
-			 :latin-1))
-	    (location (cdr (assoc :location headers))))
-	(when *debug*
-	  (cl-log:log-message :debug "resolve :charset? ~S :charset ~S~%"
-			      charset? charset))
-	(case code
-	  ((200) (list (wrap-stream stream charset) headers))
-	  ((302) (destructuring-bind (code+ headers+ stream+ actual-url)
-		     (trivial-http:http-resolve
-		      location
-		      :http-method (ecase method
-				     ((:get) 'trivial-http::http-get)
-				     ((:post) 'trivial-http::http-post)))
-		   (declare (ignore actual-url))
-		   (assert (= 200 (the fixnum code+)))
-		   (list (wrap-stream stream+ charset) headers+)))
-	  (:otherwise (http-error code "resolving ~S" location)))))))
+  (let ((charset (charset-from-headers headers))
+	(location (cdr (assoc :location headers))))
+    (when *debug*
+      (cl-log:log-message :debug "resolve :code ~S :location ~S :charset ~S~%"
+			  code location charset))
+    (case code
+      ((200) (list (wrap-stream stream charset) headers))
+      ((302) (destructuring-bind (code+ headers+ stream+ actual-url)
+		 (trivial-http:http-resolve
+		  location
+		  :http-method (ecase method
+				 ((:get) 'trivial-http::http-get)
+				 ((:post) 'trivial-http::http-post)))
+	       (declare (ignore actual-url))
+	       (assert (= 200 (the fixnum code+)))
+	       (list (wrap-stream stream+ charset) headers+)))
+      (:otherwise (http-error code "resolving ~S" location)))))
 
 ;;  Pooled HTTP requests
 
