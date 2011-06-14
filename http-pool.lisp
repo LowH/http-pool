@@ -188,11 +188,12 @@ Each pooled continuation is then applied to RESULT
        (declare (ignorable url post-params))
        (assert (eq :request-sent (pool-entry-state e)))
        (setf (pool-entry-state e) :parsed)
-       (let ((result (apply parse-fn
-			    (apply #'resolve
-				   method
-				   (trivial-http:http-read-response
-				    (pool-entry-socket e))))))
+       (let* ((args (apply #'resolve
+			   method
+			   (trivial-http:http-read-response
+			    (pool-entry-socket e))))
+	      (result (when args
+			(apply parse-fn args))))
 	 (when *debug*
 	   (format t "~&http-pool-parse-replies ~S ~S -> ~S~%"
 		   k e result))
